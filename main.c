@@ -6,8 +6,8 @@
 //
 
 #include <stdio.h>
-#include "Lexer/utils.h"
-#include "Lexer/lexer.h"
+#include "./Lexer/utils.h"
+#include "./Lexer/lexer.h"
 
 int main(int argc, const char * argv[]) {
     char *pch;

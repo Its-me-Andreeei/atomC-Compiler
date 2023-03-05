@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
 
@@ -78,7 +79,7 @@ static char *extract(const char *begin,const char *end){
 Token *tokenize(const char *pch){
 	const char *start;
 	Token *tk;
-    int last_type_detected=-1;
+
 	for(;;){
 		switch(*pch){
 			case ' ':case '\t':pch++;break;
@@ -163,22 +164,19 @@ Token *tokenize(const char *pch){
 			default:
 				if(isalpha(*pch)||*pch=='_')
                 {
-					for(start=pch++;isalnum(*pch)||*pch=='_';pch++){}
-					char *text=extract(start,pch);
+					for(start = pch++; isalnum(*pch) || *pch == '_'; pch++){}
+					char *text = extract(start, pch);
 					if(strcmp(text,"char")==0)
                     {
                         addTk(TYPE_CHAR);
-                        last_type_detected=lastTk->code;
                     }
                     else if(strcmp(text,"int")==0)
                     {
                         addTk(TYPE_INT);
-                        last_type_detected=lastTk->code;
                     }
                     else if(strcmp(text,"double")==0)
                     {
                         addTk(TYPE_DOUBLE);
-                        last_type_detected=lastTk->code;
                     }
                     else if(strcmp(text,"if")==0)
                     {
@@ -202,9 +200,16 @@ Token *tokenize(const char *pch){
                     }
 					else
                     {
-                        tk=addTk(ID);
-                        tk->text=text;
+                        tk = addTk(ID);
+                        tk->text = text;
                     }
+                }
+                else if(isdigit(*pch)) //for INTEGER constant   QA-> Not negative integers allowed?
+                {
+                    for(start=pch++; isdigit(*pch); pch++){}
+                    char *number = extract(start, pch);
+                    tk = addTk(INT);
+                    tk->i = atoi(number); //TO BE TESTED!
                 }
 				else error("invalid char: %c (%d)",*pch,*pch);
 			}
@@ -213,9 +218,10 @@ Token *tokenize(const char *pch){
 
 void showTokens(const Token *tokens){
 	for(const Token *tk=tokens;tk;tk=tk->next){
-        if(tk->code != ID)
-            printf("%d %s\n",tk->line, token_names[tk->code]);
-        else //if it is an IDentifier , also type it's name
+        //for ID and constants, the values should be printed too
+        if(tk->code == ID || tk->code == INT || tk->code == DOUBLE || tk->code == CHAR || tk->code == STRING)
             printf("%d %s:%s\n", tk->line, token_names[tk->code], tk->text);
+        else //if it is an IDentifier , also type it's name
+            printf("%d %s\n",tk->line, token_names[tk->code]);
 		}
 	}
