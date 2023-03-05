@@ -8,6 +8,8 @@ enum{
 	,COMMA,END, SEMICOLON, RPAR, LPAR, LBRACKET, RBRACKET, LACC, RACC
 	// operators
 	,ASSIGN,EQUAL, ADD, SUB, MUL, DIV, DOT, AND, OR, NOT, NOTEQ, LESS, LESSEQ, GREATER, GREATEREQ
+    // constants
+    ,INT, CHAR, DOUBLE, STRING
 	};
 
 typedef struct Token{
