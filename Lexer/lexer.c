@@ -9,9 +9,16 @@
 Token *tokens;	// single linked list of tokens
 Token *lastTk;		// the last token in list
 
+//flag enum used in finding an int or enum
+enum{
+    IS_INT=1,
+    IS_DOUBLE=2
+};
+
 static const char *token_names[]={
     //keywords
     [ID]="ID",
+    [WHILE]="WHILE",
     [TYPE_CHAR]="TYPE_CHAR",
     [TYPE_INT]="TYPE_INT",
     [TYPE_DOUBLE]="TYPE_DOUBLE",
@@ -19,6 +26,7 @@ static const char *token_names[]={
     [ELSE]="ELSE",
     [STRUCT]="STRUCT",
     [VOID]="VOID",
+    [RETURN]="RETURN",
     
     //delimiter
     [END]="END",
@@ -46,7 +54,13 @@ static const char *token_names[]={
     [LESS]="LESS",
     [LESSEQ]="LESSEQ",
     [GREATER]="GREATER",
-    [GREATEREQ]="GREATEREQ"
+    [GREATEREQ]="GREATEREQ",
+    
+    //constants
+    [INT]="INT",
+    [DOUBLE]="DOUBLE",
+    [STRING]="STRING",
+    [CHAR]="CHAR"
 };
 int line=1;		// the current line in the input file
 
@@ -69,7 +83,7 @@ Token *addTk(int code){
 static char *extract(const char *begin,const char *end){
     long length = end - begin;
     if(length < 1)
-        error("Negative length identifier found! Check for bugs");
+        error("Error at line %d : Negative length identifier found! Check for bugs", __LINE__);
     char *p = safeAlloc(length * sizeof(char));
     strncpy(p, begin, end-begin);
     p[strlen(p)]='\0';
@@ -82,9 +96,12 @@ Token *tokenize(const char *pch){
 
 	for(;;){
 		switch(*pch){
-			case ' ':case '\t':pch++;break;
+			case ' ':case '\t':
+                pch++;
+                break;
 			case '\r':		// handles different kinds of newlines (Windows: \r\n, Linux: \n, MacOS, OS X: \r or \n)
-				if(pch[1]=='\n')pch++;
+				if(pch[1]=='\n')
+                    pch++;
 				// fallthrough to \n because there is no break 
 			case '\n':
 				line++;
@@ -100,18 +117,29 @@ Token *tokenize(const char *pch){
             case '{':addTk(LACC); pch++; break;
             case '}':addTk(RACC); pch++; break;
 			case '=':
-				if(pch[1]=='='){
+				if(pch[1]=='=')
+                {
 					addTk(EQUAL);
 					pch+=2;
-					}else{
+                }
+                else
+                {
 					addTk(ASSIGN);
 					pch++;
-					}
+                }
 				break;
             case '+':addTk(ADD); pch++; break;
             case '-':addTk(SUB); pch++; break;
             case '*':addTk(MUL); pch++; break;
-            case '/':addTk(DIV); pch++; break;
+            case '/':
+                if(pch[1]=='/')//line comment found!
+                {
+                    while(*pch!='\n' && *pch!='\0'){pch++;}
+                    line++;
+                }
+                else
+                    addTk(DIV); pch++;
+                break;
             case '.':addTk(DOT); pch++; break;
             case '&':
                 if(pch[1]=='&')
@@ -120,7 +148,7 @@ Token *tokenize(const char *pch){
                     pch+=2;
                 }
                 else
-                    error("Expected: \"&&\", but found \"&\""); // QA ->TBD
+                    error("Expected: \"&&\", but found \"&\"\n"); // QA ->TBD
                 break;
             case '|':
                 if(pch[1]=='|')
@@ -129,7 +157,7 @@ Token *tokenize(const char *pch){
                     pch+=2;
                 }
                 else
-                    error("Expected: \"||\", but found \"|\""); // QA ->TBD
+                    error("Expected: \"||\", but found \"|\"\n"); // QA ->TBD
                 break;
             case '!':
                 if(pch[1]=='=')
@@ -174,6 +202,10 @@ Token *tokenize(const char *pch){
                     {
                         addTk(TYPE_INT);
                     }
+                    else if(strcmp(text,"while")==0)
+                    {
+                        addTk(WHILE);
+                    }
                     else if(strcmp(text,"double")==0)
                     {
                         addTk(TYPE_DOUBLE);
@@ -206,12 +238,60 @@ Token *tokenize(const char *pch){
                 }
                 else if(isdigit(*pch)) //for INTEGER constant   QA-> Not negative integers allowed?
                 {
-                    for(start=pch++; isdigit(*pch); pch++){}
+                    int int_or_double_flag = IS_INT; // let number be integer initially
+                    for(start=pch++; isdigit(*pch) || strchr(".-+eE", *pch); pch++)
+                    {
+                        if(*pch == '.' || *pch=='e' || *pch == 'E')
+                            int_or_double_flag=IS_DOUBLE;
+                    }
                     char *number = extract(start, pch);
-                    tk = addTk(INT);
-                    tk->i = atoi(number); //TO BE TESTED!
+                    if(int_or_double_flag==IS_INT)
+                    {
+                        tk = addTk(INT);
+                        tk->i = atoi(number);
+                    }
+                    else if(int_or_double_flag==IS_DOUBLE)
+                    {
+                        tk = addTk(DOUBLE);
+                        tk->d = atof(number);
+                    }
                 }
-				else error("invalid char: %c (%d)",*pch,*pch);
+                else if(*pch == '\'') //for characters
+                {
+                    for(start=pch++; *pch != '\'' && *pch !='\0'; pch++) {}
+                    //if(*pch == '\'' && pch-start == 3)
+                    if(*pch == '\'' )
+                    {
+                        char *character = extract(start, pch);
+                        tk = addTk(CHAR);
+                        tk->c = character[1]; //ignore first " ' "
+                        //get over it
+                        pch++;
+                    }
+                    else
+                        error("Found initial \"'\" but no ending \"'\" or not mathcing length for character detected\n");
+                }
+                else if(*pch == '\"')
+                {
+                    for(start=pch++; *pch != '\"'; pch++) {}
+                    if(*pch == '\"') //final " character
+                    {
+                        char *string = extract(start, pch);
+                        tk = addTk(STRING);
+                        
+                        //Remove " characters from begin and end of string
+                        for(int i=0; i<strlen(string)-1; i++)
+                            string[i]=string[i+1];
+                        
+                        string[strlen(string)-1]='\0';
+                        tk->text=safeAlloc(strlen(string));
+                        strcpy(tk->text, string);
+                        pch++; //go over " to next char
+                    }
+                    else
+                        error("Found initial\", but not final ending \" for string\n");
+                }
+				else error("Invalid character found: %c (%d)\n",*pch,*pch);
 			}
 		}
 	}
@@ -219,9 +299,17 @@ Token *tokenize(const char *pch){
 void showTokens(const Token *tokens){
 	for(const Token *tk=tokens;tk;tk=tk->next){
         //for ID and constants, the values should be printed too
-        if(tk->code == ID || tk->code == INT || tk->code == DOUBLE || tk->code == CHAR || tk->code == STRING)
-            printf("%d %s:%s\n", tk->line, token_names[tk->code], tk->text);
+        if(tk->code == ID)
+            printf("%d %s : %s\n", tk->line, token_names[tk->code], tk->text);
+        else if(tk->code == INT)
+            printf("%d %s : %d\n", tk->line, token_names[tk->code], tk->i);
+        else if(tk->code == DOUBLE)
+            printf("%d %s : %f\n", tk->line, token_names[tk->code], tk->d);
+        else if(tk->code == STRING)
+            printf("%d %s : %s\n", tk->line, token_names[tk->code], tk->text);
+        else if(tk->code == CHAR)
+            printf("%d %s : %c\n", tk->line, token_names[tk->code], tk->c);
         else //if it is an IDentifier , also type it's name
             printf("%d %s\n",tk->line, token_names[tk->code]);
 		}
-	}
+}
